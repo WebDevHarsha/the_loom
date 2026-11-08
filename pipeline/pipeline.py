@@ -1,49 +1,3 @@
-"""
-Resume / cover-letter pipeline.
-
-Reads:
-    resume.txt        - base LaTeX code for the resume
-    cover_letter.txt  - base LaTeX code for the cover letter
-    projects.txt      - your project details
-    jd.txt            - the job description
-
-For each document, calls Gemini (gemini-3.6-flash) to tailor the LaTeX to the
-job description and compiles it to PDF with PyLaTeX. Page-count is *not*
-handled with Gemini content-shortening during tailoring or ATS scoring —
-all content/ATS iteration happens first, on unconstrained source. Only at
-the very end (after all ATS work) does a final layout step fit the result
-to exactly one page by scaling font size / leading: shrinking (smaller
-font + tighter leading) when the PDF is over one page, growing when the
-first page looks empty. Gemini shortening is kept only as a last-resort
-fallback when even the smallest font still overflows. Output:
-
-    temp/                 - ONLY the two PDFs; replaced on every run
-        Resume.pdf, cover_letter.pdf
-    Resumes/<company>_<role>.pdf            - one file per company+role, permanent
-    Cover_Letters/<company>_<role>.pdf      - one file per company+role, permanent
-    Scores/<company>_<role>.md/.json        - same stem as the PDFs
-
-Usage:
-    python pipeline\\pipeline.py                (from the project root)
-    python pipeline\\pipeline.py --company Acme --model gemini-3.6-flash
-
-Company name: pass --company explicitly, otherwise it is extracted from
-jd.txt deterministically (falls back to "Company").
-
-Job role: pass --role explicitly, otherwise it is extracted from
-jd.txt (first lines / Title: fields). Final PDFs are saved as
-<company>_<role>.pdf (e.g. Machinify_Software_Engineer_Data_Platform.pdf)
-so multiple roles at the same company never overwrite each other.
-When no role is found, falls back to plain <company>.pdf.
-
-Requires:
-    pip install google-genai pylatex pypdf
-    + a LaTeX compiler for PyLaTeX: latexmk or pdflatex (e.g. MiKTeX), or the
-      portable TinyTeX shipped in this project at <project>/TinyTeX (its bin
-      dir is added to PATH automatically).
-    + GEMINI_API_KEY (or GOOGLE_API_KEY) set in the environment
-"""
-
 import argparse
 import contextlib
 import io
@@ -63,30 +17,20 @@ from pypdf import PdfReader
 from pylatex import Document
 from pylatex.errors import CompilerError
 
-MODEL = "gemini-3.7-flash"  # default model for Gemini calls; can be overridden with --model
+MODEL = "gemini-3.8-flash"
 
-# Layout: pipeline/ holds code + input files; project root holds the shared
-# venv, TinyTeX, and all output dirs (temp/, Resumes/, Cover_Letters/).
 PIPELINE_DIR = Path(__file__).resolve().parent
-BASE_DIR = PIPELINE_DIR.parent          # project root, e.g. F:\RB
+BASE_DIR = PIPELINE_DIR.parent
 TEMP_DIR = BASE_DIR / "temp"
 RESUMES_DIR = BASE_DIR / "Resumes"
 COVER_LETTERS_DIR = BASE_DIR / "Cover_Letters"
 
-
-# ---------------------------------------------------------------------------
-# Input files
-# ---------------------------------------------------------------------------
 
 def read_text(path: Path) -> str:
     if not path.is_file():
         sys.exit(f"ERROR: required file not found: {path}")
     return path.read_text(encoding="utf-8").strip()
 
-
-# ---------------------------------------------------------------------------
-# Gemini
-# ---------------------------------------------------------------------------
 
 RESUME_PROMPT = """\
 You are an expert resume writer. You will be given:
@@ -170,14 +114,10 @@ explanations, and no other text.
 
 
 def extract_latex(text: str) -> str:
-    """Strip Markdown fences and keep only the actual LaTeX document."""
-    # Remove ``` ... ``` fences if the model added them anyway.
     if "```" in text:
         chunks = text.split("```")
-        # Prefer a chunk that looks like LaTeX.
         inner = next((c for c in chunks if "\\documentclass" in c), chunks[1] if len(chunks) > 1 else chunks[0])
         text = inner
-        # Drop a leading language tag like "latex\n"
         first_line, _, rest = text.partition("\n")
         if first_line.strip().lower() in {"latex", "tex"}:
             text = rest
@@ -191,10 +131,6 @@ def extract_latex(text: str) -> str:
 
 
 def _quota_exit_if_rate_limited(exc: Exception) -> bool:
-    """If `exc` is a Gemini 429/quota error, print a clean message and exit.
-
-    Turns a 30-line traceback into one actionable line. Returns False for
-    any other exception type so callers can re-raise."""
     text = str(exc)
     if "429" not in text and "RESOURCE_EXHAUSTED" not in text:
         return False
@@ -208,7 +144,7 @@ def _quota_exit_if_rate_limited(exc: Exception) -> bool:
 
 
 def generate_latex(template: str, prompt_template: str, projects: str, jd: str, model: str) -> str:
-    client = genai.Client()  # picks up GEMINI_API_KEY / GOOGLE_API_KEY
+    client = genai.Client()
     prompt = prompt_template.format(
         template=template,
         projects=projects,
@@ -229,21 +165,14 @@ def generate_latex(template: str, prompt_template: str, projects: str, jd: str, 
 
 
 def extract_company_name(jd: str) -> str:
-    """Deterministically pull the hiring company's name from the JD text.
-
-    Gemini is reserved for the resume/cover-letter LaTeX only, so this is
-    pure regex over common JD shapes. Falls back to 'Company'; override
-    with --company."""
     lines = [ln.strip() for ln in jd.splitlines() if ln.strip()]
 
-    # "Company: Acme Inc."
     m = re.search(r"^\s*company\s*[:\-]\s*(.+)$", jd, re.IGNORECASE | re.MULTILINE)
     if m:
         name = m.group(1).strip().strip(".,'\"")
         if 2 <= len(name) <= 60 and len(name.split()) <= 6:
             return name
 
-    # heading "About <Company>" (skip About-the-role/-us variants)
     skip = {"the", "us", "you", "your", "our", "this", "myself", "me",
             "working", "how", "what"}
     for line in lines[:40]:
@@ -255,7 +184,6 @@ def extract_company_name(jd: str) -> str:
             continue
         return name
 
-    # "Innovex AI is a/an/the ..." in the first lines (a company intro sentence)
     for line in lines[:15]:
         m = re.match(
             r"^([A-Z][\w&.\-']*(?:\s+[A-Z][\w&.\-']*){0,5})\s+(?:is|are)\s+(?:a|an|the)\b",
@@ -268,26 +196,13 @@ def extract_company_name(jd: str) -> str:
 
 
 def sanitize_filename(name: str, *, fallback: str = "Company") -> str:
-    """Turn a company or role name into a safe file basename part.
-
-    - removes OS-illegal characters
-    - normalizes dashes (— – -) and punctuation to underscores
-    - collapses whitespace to single underscores
-    e.g. "Software Engineer — Data Platform" -> "Software_Engineer_Data_Platform"
-    """
     cleaned = name.strip()
-    # Normalize unicode dashes to spaces for clean underscore separation
     cleaned = re.sub(r"[—–]", " ", cleaned)
-    # Remove OS-illegal characters
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", cleaned)
-    # Drop common punctuation that would look noisy in a filename
     cleaned = re.sub(r"[,;:()\[\]{}'\"]+", "", cleaned)
-    # Remaining unusual characters -> underscore
     cleaned = re.sub(r"[^A-Za-z0-9\s\-_]+", "_", cleaned)
-    # Whitespace and hyphens -> underscore
     cleaned = re.sub(r"[\s\-]+", "_", cleaned)
     cleaned = re.sub(r"_+", "_", cleaned).strip("_")
-    # Keep a sane max length (avoid ultra-long JDs being used as titles)
     if len(cleaned) > 80:
         cleaned = cleaned[:80].rsplit("_", 1)[0].strip("_") or cleaned[:80]
     return cleaned or fallback
@@ -305,7 +220,6 @@ _ROLE_KEYWORDS = {
 
 
 def _looks_like_job_title(line: str) -> bool:
-    """Heuristic: name-like, short, title-cased line that could be a job title."""
     if not line:
         return False
     low = line.lower()
@@ -331,19 +245,8 @@ def _looks_like_job_title(line: str) -> bool:
 
 
 def extract_role_name(jd: str) -> str | None:
-    """Deterministically pull the job role/title from the JD text.
-
-    Tries, in order:
-    1. Explicit fields: "Title: ...", "Role: ...", "Position: ...", "Job Title: ..."
-    2. "We are hiring a/an <Title>" sentences in the first lines
-    3. First short lines that look like a title (e.g. the JD's own heading
-       "Software Engineer — Data Platform", or "Data Analyst" in jd.example).
-    Returns None when nothing plausible is found so callers can fall back
-    to plain <company>.pdf naming. Override with --role.
-    """
     lines = [ln.strip() for ln in jd.splitlines() if ln.strip()]
 
-    # 1. Explicit Title/Role fields
     m = re.search(
         r"^\s*(?:job\s+)?(?:title|role|position)\s*[:\-]\s*(.+)$",
         jd, re.IGNORECASE | re.MULTILINE,
@@ -353,7 +256,6 @@ def extract_role_name(jd: str) -> str | None:
         if 2 <= len(title) <= 80 and len(title.split()) <= 9:
             return title
 
-    # 2. "We are hiring a Senior Software Engineer ..." in first lines
     for line in lines[:8]:
         m = re.search(
             r"we\s+are\s+hiring\s+(?:a|an|the)?\s*(.+?)\s*(?:for|to|at|in)?\.?$",
@@ -365,7 +267,6 @@ def extract_role_name(jd: str) -> str | None:
             if _looks_like_job_title(cand):
                 return cand
 
-    # 3. First plausible title-like lines
     for line in lines[:6]:
         if line.lower().startswith("about "):
             continue
@@ -376,11 +277,6 @@ def extract_role_name(jd: str) -> str | None:
 
 
 def build_output_basename(company: str, role: str | None) -> str:
-    """Return the file stem for Resumes/Cover_Letters/Scores.
-
-    - with role:    <Company>_<Role>   e.g. Machinify_Software_Engineer_Data_Platform
-    - without role: <Company>          (backward-compatible fallback)
-    """
     company_part = sanitize_filename(company, fallback="Company")
     if not role:
         return company_part
@@ -393,14 +289,7 @@ def build_output_basename(company: str, role: str | None) -> str:
     return combined
 
 
-# ---------------------------------------------------------------------------
-# LaTeX -> PDF via PyLaTeX
-# ---------------------------------------------------------------------------
-
 class RawLatexDocument(Document):
-    """A PyLaTeX Document that dumps a complete, ready-to-compile LaTeX
-    source (e.g. produced by Gemini) instead of assembling its own."""
-
     def __init__(self, latex_source: str, **kwargs):
         self._latex_source = latex_source
         super().__init__(**kwargs)
@@ -410,13 +299,9 @@ class RawLatexDocument(Document):
 
 
 def ensure_compiler_on_path() -> str | None:
-    """Make a portable LaTeX shipped in the project dir visible to PyLaTeX.
-
-    Returns the dir added (or None if nothing matched); safe to call again.
-    """
     script_dir = BASE_DIR
     for candidate in (
-        script_dir / "TinyTeX" / "bin" / "windows",   # TinyTeX (<project>/TinyTeX)
+        script_dir / "TinyTeX" / "bin" / "windows",
         script_dir / "tinytex" / "bin" / "windows",
         script_dir / "MiKTeX" / "miktex" / "bin" / "x64",
         script_dir / "miktex-portable" / "texmfs" / "install" / "miktex" / "bin" / "x64",
@@ -428,25 +313,17 @@ def ensure_compiler_on_path() -> str | None:
 
 
 def compile_pdf(latex: str, workdir: Path, jobname: str, compiler: str | None) -> Path:
-    """Compile finished LaTeX source with PyLaTeX. Returns the PDF path.
-
-    PyLaTeX writes the .tex, compiles, then deletes it (clean_tex=True), so
-    workdir only ever contains the .pdf. On a compile failure the .tex stays
-    behind for debugging and is replaced quietly on the next run.
-    """
     target = str(workdir / jobname)
     doc = RawLatexDocument(latex)
     ensure_compiler_on_path()
     try:
-        # redirect_stdout: PyLaTeX prints the full transcript on failure;
-        # our RuntimeError below already extracts the useful first errors.
         with contextlib.redirect_stdout(io.StringIO()):
             doc.generate_pdf(
                 target,
                 clean=True,
-                clean_tex=True,    # delete the generated .tex -> PDFs only in temp/
-                compiler=compiler, # None -> PyLaTeX tries latexmk, then pdflatex
-                silent=True,       # hide pdflatex/latexmk chatter (class + package paths)
+                clean_tex=True,
+                compiler=compiler,
+                silent=True,
             )
     except CompilerError:
         sys.exit(
@@ -456,7 +333,6 @@ def compile_pdf(latex: str, workdir: Path, jobname: str, compiler: str | None) -
             f"(expected at {BASE_DIR / 'TinyTeX'})."
         )
     except subprocess.CalledProcessError as e:
-        # Summarize the LaTeX log instead of the whole latexmk traceback.
         log = Path(target + ".log")
         err_lines = []
         if log.is_file():
@@ -479,29 +355,19 @@ def compile_pdf(latex: str, workdir: Path, jobname: str, compiler: str | None) -
 
 
 def scratch_cleanup(workdir: Path, jobname: str) -> None:
-    """Remove all scratch-tag files (tex/pdf/aux/log/...) of one jobname."""
     for f in workdir.glob(jobname + ".*"):
         f.unlink()
 
 
-# ---------------------------------------------------------------------------
-# Pipeline
-# ---------------------------------------------------------------------------
-
 def count_pdf_pages(pdf: Path) -> int:
     try:
         return len(PdfReader(str(pdf)).pages)
-    except Exception as e:  # unreadable pdf - treat as unknown, do not retry
+    except Exception as e:
         print(f"  (could not count pages of {pdf.name}: {e})")
         return 1
 
 
 def pdf_content_span(pdf: Path) -> tuple[float, float, float] | None:
-    """(span_height_pt, top_margin_pt, page_height_pt) measured from text boxes.
-
-    Uses pypdf's text visitor to find the lowest (min y) and highest (max y)
-    text fragment on page 1. Returns None when the PDF has no extractable text.
-    """
     try:
         reader = PdfReader(str(pdf))
         page = reader.pages[0]
@@ -524,11 +390,6 @@ def pdf_content_span(pdf: Path) -> tuple[float, float, float] | None:
 
 
 def pdf_fill_ratio(pdf: Path) -> float | None:
-    """Content height as a fraction of the printable height.
-
-    Printable height is approximated as page height minus two top-sized
-    margins. Ratio ~0.70-0.85 looks noticeably empty; ~0.92+ looks full.
-    """
     measured = pdf_content_span(pdf)
     if measured is None:
         return None
@@ -545,13 +406,6 @@ def _documentclass_fontsize(latex: str) -> int:
 
 
 def _set_documentclass_fontsize(latex: str, fontsize_pt: int) -> str:
-    """Replace the fontsize option in \\documentclass[...].
-
-    Handles any pt value (10/11/12 but also 8/9 from earlier attempts) so
-    repeated scaling never appends a second fontsize. If the document has
-    no [...] options at all, it is left unchanged (caller falls back to
-    \\fontsize overrides).
-    """
     m = re.search(r"\\documentclass\s*\[(.*?)\](\s*\{[^}]*\})", latex, re.DOTALL)
     if not m:
         return latex
@@ -564,13 +418,6 @@ def _set_documentclass_fontsize(latex: str, fontsize_pt: int) -> str:
 
 
 def _inject_fontsize_override(latex: str, fontsize_pt: float, leading_pt: float) -> str:
-    """Inject \\fontsize{...}{...}\\selectfont right after \\begin{document}.
-
-    Unlike \\documentclass fontsize (article/letter only allow 10/11/12),
-    a \\fontsize override can go below 10pt (e.g. 9/8.5). Used as a
-    smaller-font fallback when documentclass sizes + tight leading still
-    overflow. Strips any previous override so retries never stack.
-    """
     latex = re.sub(r"\\fontsize\s*\{[^}]*\}\s*\{[^}]*\}\s*\\selectfont\s*\n?", "", latex, count=1)
     return re.sub(
         r"(\\begin\s*\{document\})",
@@ -581,12 +428,6 @@ def _inject_fontsize_override(latex: str, fontsize_pt: float, leading_pt: float)
 
 
 def _inject_linespread(latex: str, spread: float) -> str:
-    """Insert \\linespread{spread} right after \\begin{document}.
-
-    Strip any previous \\linespread first so retries start from the *base*
-    latex and never stack multiplications. Supports both growing
-    (spread > 1.0) and shrinking (spread < 1.0); spread == 1.0 just strips.
-    """
     latex = re.sub(r"\\linespread\s*\{[^}]*\}\s*\n?", "", latex, count=1)
     if abs(spread - 1.0) < 1e-9:
         return latex
@@ -599,15 +440,12 @@ def _inject_linespread(latex: str, spread: float) -> str:
 
 
 def _strip_scaling(latex: str) -> str:
-    """Remove previous linespread + fontsize overrides so each candidate
-    starts from the pristine base LaTeX."""
     latex = re.sub(r"\\linespread\s*\{[^}]*\}\s*\n?", "", latex, count=1)
     latex = re.sub(r"\\fontsize\s*\{[^}]*\}\s*\{[^}]*\}\s*\\selectfont\s*\n?", "", latex, count=1)
     return latex
 
 
 def _scaled_latex(base_latex: str, base_size: int, fontsize_pt: int, spread: float) -> str:
-    """Grow-path helper: documentclass fontsize + linespread."""
     latex = _strip_scaling(base_latex)
     latex = _set_documentclass_fontsize(latex, fontsize_pt)
     return _inject_linespread(latex, spread)
@@ -622,9 +460,6 @@ def _shrunk_latex(
     fontsize_override: float | None = None,
     leading_override: float | None = None,
 ) -> str:
-    """Shrink-path helper: optional documentclass size, optional
-    \\fontsize override (for <10pt), and linespread. Always starts from
-    the stripped base so candidates are independent."""
     latex = _strip_scaling(base_latex)
     if doc_size is not None:
         latex = _set_documentclass_fontsize(latex, doc_size)
@@ -636,43 +471,28 @@ def _shrunk_latex(
 
 
 def _grow_to_fill(pdf: Path, latex: str, jobname: str, compiler: str | None) -> tuple[Path, str]:
-    """Grow a one-page PDF so it fills (nearly) the whole page.
-
-    Text layout is unchanged - only the base font size (via
-    \\documentclass) and leading (\\linespread) grow, in steps, until the
-    content fills the page or one more step would spill onto page 2. The
-    last candidate that stayed on one page wins. Never makes things worse:
-    on any failure the original pdf/latex are returned untouched.
-    Assumes pdf is already exactly 1 page.
-    """
     ratio = pdf_fill_ratio(pdf)
     if ratio is not None and ratio >= 0.92:
-        return pdf, latex  # already full
+        return pdf, latex
 
     base_size = _documentclass_fontsize(latex)
-    # Build (fontsize, linespread) candidates ordered by effective scale
-    # so the "first that looks full" and any spill are both handled by a
-    # single ascending pass.
     sizes = [s for s in (11, 12) if s > base_size]
     if not sizes:
-        sizes = [base_size]  # already 12pt: grow leading only
+        sizes = [base_size]
     spreads = [1.00, 1.05, 1.10, 1.15, 1.20]
-    candidates: list[tuple[int, float, float]] = []  # (fontsize, spread, eff)
+    candidates: list[tuple[int, float, float]] = []
     for size in sizes:
         for spread in spreads:
             eff = (size / base_size) * spread
             if eff > 1.0 and eff <= 1.45:
                 candidates.append((size, spread, eff))
     candidates.sort(key=lambda c: c[2])
-    # Dedupe effective scales (12pt+1.0 == 12pt at 10->12 base, etc. keep first)
     deduped: list[tuple[int, float, float]] = []
     for c in candidates:
         if not deduped or abs(c[2] - deduped[-1][2]) > 0.005:
             deduped.append(c)
     candidates = deduped
 
-    # Start near (but slightly below) the scale the measured gap suggests,
-    # so we don't waste compiles on sizes that are obviously still empty.
     if ratio:
         needed = 0.95 / max(ratio, 0.5)
         start = 0
@@ -693,10 +513,10 @@ def _grow_to_fill(pdf: Path, latex: str, jobname: str, compiler: str | None) -> 
             candidate_pdf = compile_pdf(candidate_latex, TEMP_DIR, tag, compiler)
         except RuntimeError:
             scratch_cleanup(TEMP_DIR, tag)
-            break  # bigger candidates will not help if this one won't build
+            break
         if count_pdf_pages(candidate_pdf) != 1:
             scratch_cleanup(TEMP_DIR, tag)
-            break  # overflowed: previous candidate (if any) is the last good one
+            break
         new_ratio = pdf_fill_ratio(candidate_pdf)
         if new_ratio is not None and new_ratio > best_ratio:
             best_pdf, best_latex, best_ratio = candidate_pdf, candidate_latex, new_ratio
@@ -715,14 +535,6 @@ def _grow_to_fill(pdf: Path, latex: str, jobname: str, compiler: str | None) -> 
 
 
 def _try_shrink_to_one_page(pdf: Path, latex: str, jobname: str, compiler: str | None) -> tuple[Path, str] | None:
-    """Try font/leading shrinking to force an over-long PDF onto 1 page.
-
-    Tries, in descending effective-scale order (largest fitting font first):
-    1. documentclass size down (12 -> 11 -> 10) x tighter \\linespread
-    2. \\fontsize overrides below 10pt (9 / 8.5 / 8) x tighter leading
-    The first candidate that compiles to exactly 1 page wins. Returns None
-    when nothing fits (caller may fall back to Gemini shortening).
-    """
     base_size = _documentclass_fontsize(latex)
     doc_sizes = [s for s in (12, 11, 10) if s <= base_size]
     spreads = [1.00, 0.97, 0.94, 0.90, 0.86, 0.82]
@@ -801,22 +613,6 @@ def fit_pdf_to_one_page(
     pdf: Path, latex: str, jobname: str, compiler: str | None,
     model: str | None = None, jd: str | None = None,
 ) -> tuple[Path, str]:
-    """Final page-fit for a document: shrink if >1 page, grow if <full.
-
-    This is the ONLY place where page fitting happens and it must be called
-    *after* all content iteration (tailoring + ATS improvement) so Gemini is
-    never asked to delete content just to chase page count mid-flow.
-
-    - 1 page and already >=92% full -> return as-is.
-    - 1 page but empty -> grow font/leading to fill (\\_grow_to_fill).
-    - >1 pages -> shrink font/leading (documentclass -> \\fontsize
-      overrides). First scale that fits wins.
-    - Still >1 page at the smallest font AND model/jd given -> last-resort
-      Gemini shortening (up to 2 tries, also *at the end*), then grow.
-
-    Never makes things worse: on total failure the original pdf/latex are
-    returned untouched.
-    """
     pages = count_pdf_pages(pdf)
     if pages == 1:
         return _grow_to_fill(pdf, latex, jobname, compiler)
@@ -879,12 +675,10 @@ def fit_pdf_to_one_page(
 
 
 def fill_pdf_to_one_page(pdf: Path, latex: str, jobname: str, compiler: str | None, model: str | None = None, jd: str | None = None) -> tuple[Path, str]:
-    """Backward-compatible alias. Prefer fit_pdf_to_one_page."""
     return fit_pdf_to_one_page(pdf, latex, jobname, compiler, model=model, jd=jd)
 
 
 def generate_shortened_latex(latex: str, pages: int, jd: str, model: str, client) -> str:
-    """Ask Gemini to shrink an over-long compiled document to one page."""
     prompt = COMPRESS_PROMPT.format(template=latex, pages=pages, jd=jd)
     try:
         response = client.models.generate_content(
@@ -901,13 +695,6 @@ def generate_shortened_latex(latex: str, pages: int, jd: str, model: str, client
 def generate_pdf(kind: str, template: str, projects: str, jd: str,
                  model: str, workdir: Path, jobname: str,
                  compiler: str | None) -> tuple[Path, str]:
-    """Generate the tailored LaTeX once and compile it.
-
-    Page count is *not* handled here. The draft is returned as-is even if
-    it is over one page — fitting to exactly one page happens only at the
-    very end via fit_pdf_to_one_page (font scaling, after ATS), so Gemini
-    is never asked to delete content just to chase page count mid-flow.
-    """
     base_prompt = RESUME_PROMPT if kind == "Resume" else COVER_LETTER_PROMPT
     latex = generate_latex(template, base_prompt, projects, jd, model)
 
@@ -931,28 +718,16 @@ def generate_pdf(kind: str, template: str, projects: str, jd: str,
 def generate_one_page_pdf(kind: str, template: str, projects: str, jd: str,
                           model: str, workdir: Path, jobname: str,
                           compiler: str | None, max_fix_attempts: int = 2) -> tuple[Path, str]:
-    """Backward-compatible alias. max_fix_attempts is ignored — page fitting
-    now happens only at the end via fit_pdf_to_one_page(). Prefer generate_pdf().
-    """
     return generate_pdf(kind, template, projects, jd, model, workdir, jobname, compiler)
 
 
 
 def copy_final_pdf(pdf: Path, out_dir: Path, name: str) -> Path:
-    """Copy the PDF into the permanent dir; the temp/ copy stays as-is.
-
-    Overwrites same-named <company>_<role> files; other files are kept
-    (so two roles at one company never overwrite each other).
-    """
     out_dir.mkdir(parents=True, exist_ok=True)
     final = out_dir / name
     shutil.copy2(pdf, final)
     return final
 
-
-# ---------------------------------------------------------------------------
-# ATS scoring (local engine in ../ats-engine) + optional Gemini blend
-# ---------------------------------------------------------------------------
 
 ENGINE_DIR = BASE_DIR / "ats-engine"
 SCORES_DIR = BASE_DIR / "Scores"
@@ -1013,7 +788,6 @@ no fences, no explanation.
 
 
 def _engine_command() -> list[str]:
-    """Command line for the local ATS engine, [] when it is not installed."""
     engine_main = ENGINE_DIR / "main.py"
     if not engine_main.is_file():
         return []
@@ -1023,7 +797,6 @@ def _engine_command() -> list[str]:
 
 
 def _gemini_ats_score(resume_text: str, jd_text: str, model: str, client) -> dict | None:
-    """Optional Gemini-judged score (structured JSON); None on any failure."""
     try:
         prompt = ATS_JUDGE_PROMPT.format(jd=jd_text[:12000], resume_text=resume_text[:12000])
         response = client.models.generate_content(
@@ -1048,11 +821,6 @@ def _gemini_ats_score(resume_text: str, jd_text: str, model: str, client) -> dic
 
 def score_resume_ats(pdf: Path, jd_input: Path, *, model: str, use_llm: bool,
                      client=None) -> dict | None:
-    """Run the local ATS engine; optionally blend a Gemini-judged score.
-
-    Returns {"local", "gemini", "final", "missing", "recommendations", "md",
-    "json"} or None when the engine is unavailable (warned, never fatal).
-    """
     cmd = _engine_command()
     if not cmd:
         print("  WARNING: ATS engine missing (expected ats-engine/main.py); skipping ATS scoring.")
@@ -1109,14 +877,6 @@ def score_resume_ats(pdf: Path, jd_input: Path, *, model: str, use_llm: bool,
 
 def score_and_maybe_improve(pdf: Path, latex: str, jd: str, projects: str,
                             args) -> tuple[Path, str, dict | None]:
-    """Score the resume; below --min-score, re-tailor it with Gemini (bounded).
-
-    Attempts compile under scratch names, and the best-scoring successfully
-    compiled version wins regardless of page count. Page fitting is
-    deferred to fit_pdf_to_one_page() at the very end (after this entire
-    ATS loop), so improved versions are never shortened or discarded for
-    being over-long — they are simply shrunk later via font scaling.
-    """
     jd_input = TEMP_DIR / "ATS_jd_input.txt"
     jd_input.write_text(jd, encoding="utf-8")
 
@@ -1183,7 +943,7 @@ def score_and_maybe_improve(pdf: Path, latex: str, jd: str, projects: str,
         print("  NOTE: auto-improve and the optional Gemini layer both need Gemini (GEMINI_API_KEY); score kept as-is.")
     if best_pdf != pdf:
         final = TEMP_DIR / "Resume.pdf"
-        shutil.copy2(best_pdf, final)  # copy BEFORE cleanup, else best is deleted
+        shutil.copy2(best_pdf, final)
         best_pdf = final
     for f in TEMP_DIR.glob("Resume__ats*"):
         f.unlink()
@@ -1191,10 +951,6 @@ def score_and_maybe_improve(pdf: Path, latex: str, jd: str, projects: str,
 
 
 def file_score_report(report: dict, company_file: str) -> Path | None:
-    """Copy the ATS report into Scores/<stem>.md + .json; returns md path.
-
-    <stem> is <company>_<role> when a role was detected, else <company>.
-    """
     scores = SCORES_DIR
     scores.mkdir(parents=True, exist_ok=True)
     md_target = scores / f"{company_file}.md"
@@ -1239,11 +995,6 @@ def run_pipeline(args) -> dict:
                 score_file = file_score_report(ats_report, company_file)
                 print(f"  -> {score_file}")
 
-        # FINAL PAGE-FIT (after ALL content iteration + ATS scoring):
-        # shrink font/leading if the result is over one page, grow it if
-        # the single page looks empty. No content changes happen here
-        # except as a last-resort fallback when even the smallest font
-        # still overflows. Layout-only in the normal path.
         pdf, latex = fit_pdf_to_one_page(
             pdf, latex, name, args.compiler, model=args.model, jd=jd,
         )
