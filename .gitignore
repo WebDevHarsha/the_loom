@@ -37,6 +37,7 @@ resume.txt
 cover_letter.txt
 projects.txt
 jd.txt
+candidate_skills.txt
 
 # --- Secrets ---
 .env
