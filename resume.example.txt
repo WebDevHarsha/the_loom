@@ -1,0 +1,159 @@
+% ============================================================
+% RESUME TEMPLATE - save as resume.txt (replacing this example)
+% Full LaTeX source; the pipeline sends this to Gemini to tailor
+% it to the job description, then compiles it with PyLaTeX.
+% It must be one complete document from \documentclass to
+% \end{document} and fill exactly ONE page.
+% ============================================================
+
+\documentclass[letterpaper,10pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{tabularx}
+\usepackage[english]{babel}
+\usepackage{microtype}
+
+\input{glyphtounicode}
+\pdfgentounicode=1
+
+%----------PAGE SETUP----------
+\pagestyle{empty}
+\addtolength{\oddsidemargin}{-0.55in}
+\addtolength{\evensidemargin}{-0.55in}
+\addtolength{\textwidth}{1.10in}
+\addtolength{\topmargin}{-0.55in}
+\addtolength{\textheight}{1.15in}
+
+\urlstyle{same}
+\raggedbottom
+\raggedright
+\setlength{\tabcolsep}{0in}
+
+%----------SECTION FORMATTING----------
+\titleformat{\section}
+  {\large\bfseries}
+  {}{0em}{}
+  [\titlerule\vspace{-3pt}]
+
+%----------CUSTOM COMMANDS----------
+\newcommand{\resumeItem}[1]{
+  \item\small{#1}
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+  \vspace{2pt}
+  \item
+  \begin{tabular*}{0.98\textwidth}{
+    l@{\extracolsep{\fill}}r
+  }
+    \textbf{\small #1} & \small #2 \\
+  \end{tabular*}
+  \vspace{-3pt}
+}
+
+\newcommand{\resumeSubheading}[4]{
+  \vspace{2pt}
+  \item
+  \begin{tabular*}{0.98\textwidth}[t]{
+    l@{\extracolsep{\fill}}r
+  }
+    \textbf{\small #1} & \small #2 \\
+    \small\textit{#3} & \small #4 \\
+  \end{tabular*}
+  \vspace{-3pt}
+}
+
+\newcommand{\resumeHeading}[4]{
+  \vspace{2pt}
+  \item
+  \begin{tabular*}{0.98\textwidth} {
+    l@{\extracolsep{\fill}}r
+  }
+    \textbf{#1} & #2 \\
+    \textit{\small\textbf{#3}} & \small #4 \\
+  \end{tabular*}
+}
+
+\renewcommand\labelitemi{\raisebox{2pt}{\tiny$\bullet$}}
+
+%----------DOCUMENT----------
+\begin{document}
+
+\textbf{\Large Jane Doe}
+\vspace{4pt}
+\noindent
+\small
+City, Country \textbar{} +1-234-567-890 \textbar{}
+\href{mailto:jane.doe@example.com}{jane.doe@example.com} \textbar{}
+\href{https://www.linkedin.com/in/janedoe}{LinkedIn} \textbar{}
+\href{https://github.com/janedoe}{GitHub} \textbar{}
+\href{https://janedoe.dev}{Portfolio}
+\normalsize
+
+\vspace{4pt}
+
+%----------SUMMARY----------
+\section{Summary}\vspace{0.25em}
+\begin{itemize}
+    \resumeItem{Placeholder for a two-line summary of your best qualities. Mention what kind of engineer you are and the single strongest proof of it.}
+\end{itemize}
+
+%----------EXPERIENCE----------
+\section{Experience}\vspace{0.25em}
+\begin{enumerate}
+  \item
+  \resumeSubheading
+      {Somewhere University, Bangalore}{Web Developer - IT}
+      {CSSI Program}{Jun 2024 -- Jul 2024}
+      \vspace{-3pt}
+      \item
+      \begin{itemize}
+          \resumeItem{Placeholder bullet: what you built, with a tool stack and a number.}
+          \resumeItem{Placeholder bullet: something you owned end to end, with an outcome.}
+      \end{itemize}
+\end{enumerate}
+
+%----------PROJECTS----------
+\section{Projects}\vspace{0.25em}
+\begin{enumerate}
+  \item
+  \resumeProjectHeading
+      {\textbf{Sample Project}}{\href{https://github.com/janedoe/sample}{GitHub}}
+      \vspace{-3pt}
+      \item
+      \begin{itemize}
+          \resumeItem{Placeholder bullet: what the project does and for whom.}
+          \resumeItem{Placeholder bullet: the part you personally engineered, with technologies.}
+          \resumeItem{Placeholder bullet: impact, in numbers, if possible.}
+      \end{itemize}
+\end{enumerate}
+
+%----------SKILLS----------
+\section{Skills}\vspace{0.25em}
+\begin{itemize}
+    \resumeItem{Languages: sample list}
+    \resumeItem{Frameworks, Databases: sample list}
+\end{itemize}
+
+%----------CERTIFICATES----------
+\section{Certificates}\vspace{0.25em}
+\begin{enumerate}
+    \item
+    \begin{tabular*}{0.98\textwidth}{
+      l@{\extracolsep{\fill}}r
+    }
+      \textbf{Example Certificate -- Issuer}
+      & \href{https://example.com/cert}{View Certificate} \\[-1pt]
+      \textit{\small Month Year} & \\
+    \end{tabular*}
+\end{enumerate}
+
+\end{document}

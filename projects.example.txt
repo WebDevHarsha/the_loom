@@ -1,0 +1,50 @@
+# MASTER PROJECT PORTFOLIO
+
+**Owner:** Jane Doe
+**GitHub:** https://github.com/janedoe
+**Portfolio:** https://janedoe.dev
+
+---
+
+# 1. SAMPLE PROJECT
+
+**Project Name:** Sample Project
+**Domain:** AI / Web / Developer tooling (whichever fits)
+**Type:** What kind of tool / app / platform it is
+**Status:** Live / In development
+**Website:** https://example.vercel.app/
+**Repository:** https://github.com/janedoe/sample-project
+
+### Description
+One or two plain sentences on what it is, who it is for and what problem it solves. Written as facts, not marketing.
+
+### How it works
+1. The user does the first step.
+2. Then the system does the second step (name the main technologies used).
+3. A specific part - e.g. "an LLM call scores each submission" - does the clever thing.
+4. The result is shown / exported / stored.
+
+### Why it matters
+One or two sentences on what the candidate learned or proved while building it. Concreteness beats claims.
+
+---
+
+# 2. ANOTHER PROJECT
+
+**Project Name:** Another Project
+**Domain:** ...
+**Type:** ...
+**Status:** ...
+**Website/Repository:** drop or keep whichever applies
+
+### Description
+
+### How it works
+
+### Why it matters
+
+---
+
+## GUIDANCE FOR GEMINI
+- Only use these project descriptions as-is: never invent features, metrics or claims that are not written here.
+- When the job description mentions a skill or domain, pick the 1-2 most relevant projects above and phrase their bullets strongly.

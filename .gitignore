@@ -1,0 +1,51 @@
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+
+# --- Virtual environment ---
+venv/
+.venv/
+
+# --- Portable LaTeX compiler (reinstall with: install_tinytex.bat) ---
+TinyTeX/
+tinytex/
+MiKTeX/
+miktex-portable/
+
+# --- Pipeline working dir + LaTeX build artifacts ---
+temp/
+*.aux
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.toc
+*.bbl
+*.blg
+
+# --- Generated PDFs ---
+Resume.pdf
+cover_letter.pdf
+Resumes/
+Cover_Letters/
+
+# --- Personal input files (examples are kept: *.example.txt) ---
+resume.txt
+cover_letter.txt
+projects.txt
+jd.txt
+
+# --- Secrets ---
+.env
+.env.*
+*.key
+
+# --- Editor / OS noise ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+~$*

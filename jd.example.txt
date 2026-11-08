@@ -1,0 +1,34 @@
+Data Analyst
+Bengaluru
+
+Location: Bengaluru, India
+
+About Example Company
+Example Company builds a fictional product that processes example data at
+example scale for example customers. Replace this paragraph with the
+company's real one, copied from the job posting: what they do, at what
+scale, with whom, and any other numbers they are proud of. The pipeline
+uses this block to extract the company name for the PDF filenames, so keep
+the company name spelled exactly as in the posting ("About Machinify" ->
+Machinify.pdf).
+
+About the Role
+Replace with the posting's real "About the role" paragraph: which team the
+role sits in, what the day-to-day looks like, and any special coverage
+expectations (e.g. on-call, night shift, travel).
+
+What you will do
+- Responsibility 1, copied or condensed from the posting
+- Responsibility 2
+- Responsibility 3
+- Responsibility 4
+
+What we look for
+- Requirement 1, copied or condensed from the posting
+- Requirement 2
+- Requirement 3
+- Requirement 4
+
+Nice to have
+- Bonus requirement 1
+- Bonus requirement 2
