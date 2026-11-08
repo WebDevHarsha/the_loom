@@ -11,8 +11,9 @@ if exist "%TINYTEX_DIR%\bin\windows\pdflatex.exe" (
 )
 
 echo Downloading TinyTeX-1 for Windows (~74 MB)...
+rem Version-pinned URL; update the tag below when TinyTeX releases a newer one.
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "Invoke-WebRequest -Uri 'https://github.com/rstudio/tinytex-releases/releases/latest/download/TinyTeX-1-windows-v2026.11.exe' -OutFile '%TINYTEX_ZIP%'"
+    "Invoke-WebRequest -Uri 'https://github.com/rstudio/tinytex-releases/releases/download/v2026.11/TinyTeX-1-windows-v2026.11.exe' -OutFile '%TINYTEX_ZIP%'"
 if errorlevel 1 (
     echo ERROR: download failed.
     exit /b 1
