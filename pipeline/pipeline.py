@@ -36,7 +36,8 @@ RESUME_PROMPT = """\
 You are an expert resume writer. You will be given:
 1. The LaTeX source code of my resume.
 2. My project details.
-3. A job description.
+3. My allowed candidate skills (source of truth).
+4. A job description.
 
 Task: edit the resume's LaTeX code so it is best tailored to the job \
 description. Use the project details to phrase bullet points, reorder, \
@@ -46,6 +47,13 @@ same overall structure. For each project, include only 2 subsections (bullet poi
 prioritize preserving job-relevant content - do not over-prune to chase \
 page count. Final fit to exactly one page is handled separately afterwards \
 by font/leading scaling, so do not delete important content for length.
+STRICT SKILL RULE: Only mention skill/tool/language/framework names that appear \
+in === CANDIDATE SKILLS === or are already explicitly evidenced in the resume \
+or project details above. Do NOT add any new skill/tool name from the job \
+description (e.g. do not insert Go, Kubernetes, Angular, etc. unless they are \
+in the allowlist). If the JD asks for a skill with no evidence in the \
+allowlist/projects, leave the bullet unchanged and omit that skill - do not \
+map, rename or stretch a real skill to claim it.
 
 Return ONLY the complete LaTeX source code of the edited resume (from \
 \\documentclass to \\end{{document}}), with no Markdown fences, no \\
@@ -57,6 +65,9 @@ explanations, and no other text.
 === PROJECT DETAILS ===
 {projects}
 
+=== CANDIDATE SKILLS - ALLOWED ONLY ===
+{skills}
+
 === JOB DESCRIPTION ===
 {jd}
 """
@@ -65,7 +76,8 @@ COVER_LETTER_PROMPT = """\
 You are an expert cover letter writer. You will be given:
 1. The LaTeX source code of my cover letter template.
 2. My project details and experience highlights.
-3. A job description.
+3. My allowed candidate skills (source of truth).
+4. A job description.
 
 Task: edit the cover letter's LaTeX code so it becomes a compelling, \
 personalized cover letter for this exact job description. Reference the \
@@ -73,6 +85,9 @@ candidate's projects where relevant to show fit. Work strictly from the \
 material given - never invent experience, skills or facts. Keep the letter \
 concise and roughly one page, but prioritize completeness - final fit to \
 one page is handled separately afterwards by font/leading scaling.
+STRICT SKILL RULE: Only mention skill/tool/language/framework names in \
+=== CANDIDATE SKILLS === or already evidenced in the cover letter template \
+or project details. Do NOT add new skills from the job description.
 
 Return ONLY the complete LaTeX source code of the edited cover letter (from \
 \\documentclass to \\end{{document}}), with no Markdown fences, no \\
@@ -83,6 +98,9 @@ explanations, and no other text.
 
 === PROJECT DETAILS ===
 {projects}
+
+=== CANDIDATE SKILLS - ALLOWED ONLY ===
+{skills}
 
 === JOB DESCRIPTION ===
 {jd}
@@ -143,12 +161,13 @@ def _quota_exit_if_rate_limited(exc: Exception) -> bool:
     )
 
 
-def generate_latex(template: str, prompt_template: str, projects: str, jd: str, model: str) -> str:
+def generate_latex(template: str, prompt_template: str, projects: str, jd: str, model: str, skills: str = "") -> str:
     client = genai.Client()
     prompt = prompt_template.format(
         template=template,
         projects=projects,
         jd=jd,
+        skills=skills,
     )
     try:
         response = client.models.generate_content(
@@ -694,9 +713,9 @@ def generate_shortened_latex(latex: str, pages: int, jd: str, model: str, client
 
 def generate_pdf(kind: str, template: str, projects: str, jd: str,
                  model: str, workdir: Path, jobname: str,
-                 compiler: str | None) -> tuple[Path, str]:
+                 compiler: str | None, skills: str = "") -> tuple[Path, str]:
     base_prompt = RESUME_PROMPT if kind == "Resume" else COVER_LETTER_PROMPT
-    latex = generate_latex(template, base_prompt, projects, jd, model)
+    latex = generate_latex(template, base_prompt, projects, jd, model, skills=skills)
 
     try:
         draft_pdf = compile_pdf(latex, workdir, f"{jobname}__draft", compiler)
@@ -762,12 +781,16 @@ You are an expert resume writer. A resume tailored to the job description below 
 scored {score}/100 on ATS compatibility. Edit the resume's LaTeX source so the \
 missing evidence is better represented - but only when the candidate's real \
 material supports it:
-- Work strictly from the current LaTeX, project details and job description given. \
-NEVER invent experience, tools or facts. If a missing keyword cannot honestly map \
-to real material, leave it out.
+- Work strictly from the current LaTeX, project details, candidate skills and \
+job description given. NEVER invent experience, tools or facts. If a missing \
+keyword cannot honestly map to real material, leave it out.
+- STRICT SKILL RULE: Only mention skill/tool/language/framework names in \
+=== CANDIDATE SKILLS === or already evidenced in the LaTeX/projects above. Do \
+NOT add any new skill/tool name from the job description. If a missing keyword \
+in {missing} is not in the allowlist, leave it out entirely.
 - Prefer rewording existing bullets to surface skills that are already there in \
 concrete form (e.g. write 'PostgreSQL' instead of just 'databases' - if that is \
-in fact what was used).
+in fact what was used and is in the allowlist).
 - Do not worry about page count - final fit to one page is handled separately \
 afterwards by font scaling. Prioritize ATS evidence over length. Do not change \
 the document class or packages.
@@ -781,6 +804,9 @@ no fences, no explanation.
 
 === PROJECT DETAILS ===
 {projects}
+
+=== CANDIDATE SKILLS - ALLOWED ONLY ===
+{skills}
 
 === JOB DESCRIPTION ===
 {jd}
@@ -876,7 +902,7 @@ def score_resume_ats(pdf: Path, jd_input: Path, *, model: str, use_llm: bool,
 
 
 def score_and_maybe_improve(pdf: Path, latex: str, jd: str, projects: str,
-                            args) -> tuple[Path, str, dict | None]:
+                            args, skills: str = "") -> tuple[Path, str, dict | None]:
     jd_input = TEMP_DIR / "ATS_jd_input.txt"
     jd_input.write_text(jd, encoding="utf-8")
 
@@ -911,7 +937,7 @@ def score_and_maybe_improve(pdf: Path, latex: str, jd: str, projects: str,
         missing = ", ".join(best_report["missing"][:12]) or "(none reported)"
         prompt = ATS_IMPROVE_PROMPT.format(
             score=best_report["final"], missing=missing,
-            latex=best_latex, projects=projects, jd=jd[:12000],
+            latex=best_latex, projects=projects, jd=jd[:12000], skills=skills,
         )
         try:
             response = client.models.generate_content(
@@ -959,11 +985,24 @@ def file_score_report(report: dict, company_file: str) -> Path | None:
     return md_target
 
 
+def read_optional_text(path: Path) -> str:
+    if not path.is_file():
+        print(f"  WARNING: skills file not found: {path} (continuing without allowlist; Gemini may invent skills)")
+        return ""
+    text = path.read_text(encoding="utf-8").strip()
+    if not text:
+        print(f"  WARNING: skills file is empty: {path} (continuing without allowlist)")
+    return text
+
+
 def run_pipeline(args) -> dict:
     resume = read_text(args.resume)
     cover_letter = read_text(args.cover_letter)
     projects = read_text(args.projects)
     jd = read_text(args.jd)
+    skills = read_optional_text(args.skills)
+    n_skills = len([l for l in skills.splitlines() if l.strip() and not l.strip().startswith("#")])
+    print(f"Skills allowlist: {args.skills} ({n_skills} lines)" if skills else "Skills allowlist: (none - hallucination guard disabled)")
 
     ensure_compiler_on_path()
 
@@ -984,12 +1023,12 @@ def run_pipeline(args) -> dict:
         ats_report = None
         pdf, latex = generate_pdf(
             name, template, projects, jd, args.model,
-            TEMP_DIR, name, args.compiler,
+            TEMP_DIR, name, args.compiler, skills=skills,
         )
         print(f"  -> {pdf}")
 
         if name == "Resume" and not args.no_score:
-            pdf, latex, ats_report = score_and_maybe_improve(pdf, latex, jd, projects, args)
+            pdf, latex, ats_report = score_and_maybe_improve(pdf, latex, jd, projects, args, skills=skills)
             print(f"  -> {pdf}")
             if ats_report:
                 score_file = file_score_report(ats_report, company_file)
@@ -1019,6 +1058,8 @@ def main() -> None:
     parser.add_argument("--resume", type=Path, default=PIPELINE_DIR / "resume.txt")
     parser.add_argument("--cover-letter", type=Path, default=PIPELINE_DIR / "cover_letter.txt")
     parser.add_argument("--projects", type=Path, default=PIPELINE_DIR / "projects.txt")
+    parser.add_argument("--skills", type=Path, default=PIPELINE_DIR / "candidate_skills.txt",
+                        help="Your true skills allowlist (default: pipeline/candidate_skills.txt). Gemini must not mention skills outside this file.")
     parser.add_argument("--jd", type=Path, default=PIPELINE_DIR / "jd.txt")
     parser.add_argument("--model", default=MODEL)
     parser.add_argument("--company", default=None, help="Company name for the final PDF filenames (default: extracted from jd.txt)")

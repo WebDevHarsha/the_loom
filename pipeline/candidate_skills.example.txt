@@ -1,0 +1,13 @@
+# CANDIDATE SKILLS - SOURCE OF TRUTH (copy to candidate_skills.txt and edit)
+# Everything Gemini is allowed to mention as a skill/tool must be in this file.
+# If a JD asks for a skill NOT listed here, Gemini MUST leave it out.
+# Only list skills you can honestly claim and defend in an interview.
+
+Programming: Python, SQL
+Machine Learning: scikit-learn, TensorFlow
+NLP & LLMs: Natural Language Processing (NLP), Text Embeddings, RAG
+Backend: Flask, REST APIs
+Databases: PostgreSQL
+Frontend: React, TypeScript
+Tools & Infrastructure: Git, GitHub, Docker
+Foundations: OOP, Data Structures and Algorithms
