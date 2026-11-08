@@ -912,6 +912,8 @@ def run_pipeline(args) -> dict:
         results[name] = {"pdf": pdf, "final": final, "ats": ats_report if name == "Resume" else None}
         print(f"  -> {final}")
 
+    results["company"] = company
+    results["company_file"] = company_file
     return results
 
 
@@ -944,7 +946,8 @@ def main() -> None:
     print(f"  temp/cover_letter.pdf  -> {results['cover_letter']['final']}")
     ats = results["Resume"].get("ats")
     if ats:
-        print(f"  ATS score              -> {ats['final']:.0f}/100 (report: Scores/{sanitize_filename(company)}.md)")
+        company_file = results.get("company_file", sanitize_filename(results.get("company", "Company")))
+        print(f"  ATS score              -> {ats['final']:.0f}/100 (report: Scores/{company_file}.md)")
 
 
 if __name__ == "__main__":
