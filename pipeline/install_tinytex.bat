@@ -2,8 +2,8 @@
 rem Portable TinyTeX install - everything stays inside this project dir (F:\RB).
 rem No admin or system permissions needed; installs to <project>\TinyTeX only.
 setlocal
-set "TINYTEX_ZIP=%~dp0TinyTeX-1-windows.exe"
-set "TINYTEX_DIR=%~dp0TinyTeX"
+set "TINYTEX_ZIP=%~dp0..\TinyTeX-1-windows.exe"
+set "TINYTEX_DIR=%~dp0..\TinyTeX"
 
 if exist "%TINYTEX_DIR%\bin\windows\pdflatex.exe" (
     echo TinyTeX already installed at %TINYTEX_DIR%

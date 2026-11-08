@@ -42,6 +42,11 @@ jd.txt
 .env.*
 *.key
 
+# --- ATS engine caches + generated model files (stay inside the repo) ---
+ats-engine/.models/
+.pip-cache/
+tmp/
+
 # --- Editor / OS noise ---
 .vscode/
 .idea/
