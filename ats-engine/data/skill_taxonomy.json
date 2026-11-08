@@ -1,0 +1,55 @@
+{
+  "programming_languages": [
+    "Python", "Java", "JavaScript", "TypeScript", "C++", "C#", "Go", "Rust",
+    "PHP", "Ruby", "Swift", "Kotlin", "Scala", "R", "MATLAB", "Bash", "SQL",
+    "HTML", "CSS", "Dart", "Perl", "Objective-C"
+  ],
+  "frameworks_libraries": [
+    "Django", "Flask", "FastAPI", "React", "Angular", "Vue", "Next.js",
+    "Node.js", "Express", "Spring Boot", "Spring", "ASP.NET", ".NET",
+    "TensorFlow", "PyTorch", "scikit-learn", "Keras", "pandas", "NumPy",
+    "OpenCV", "Hugging Face", "LangChain", "Matplotlib", "Seaborn",
+    "Android SDK", "iOS SDK", "Flutter", "React Native", "Unity",
+    "GraphQL", "REST API", "gRPC", "Celery", "Streamlit", "Tailwind CSS",
+    "Bootstrap", "jQuery", "Hibernate"
+  ],
+  "databases": [
+    "PostgreSQL", "MySQL", "MongoDB", "Redis", "SQLite", "SQL Server",
+    "Oracle Database", "Snowflake", "BigQuery", "Elasticsearch", "DynamoDB",
+    "Cassandra", "Neo4j", "Firebase"
+  ],
+  "cloud_devops": [
+    "AWS", "Azure", "Google Cloud Platform", "AWS S3", "AWS EC2", "AWS Lambda",
+    "Docker", "Kubernetes", "Terraform", "Ansible", "Jenkins", "CI/CD",
+    "GitHub Actions", "GitLab CI", "CircleCI", "Git", "Linux", "Nginx",
+    "Apache Kafka", "Airflow", "Spark", "Hadoop", "Hive", "Flink",
+    "SSIS", "SQL Server Agent", "Grafana", "ELK", "Prometheus", "SFTP",
+    "Datadog", "CloudWatch", "SLA Monitoring"
+  ],
+  "data_ml": [
+    "Machine Learning", "Deep Learning", "Natural Language Processing",
+    "Computer Vision", "Data Analysis", "Data Visualization", "Data Pipelines",
+    "ETL", "Statistics", "A/B Testing", "Time Series Analysis",
+    "Recommender Systems", "Reinforcement Learning", "Data Engineering",
+    "Data Cleaning", "Feature Engineering", "Model Deployment", "MLOps",
+    "Prompt Engineering", "LLM Fine-tuning", "Data Privacy", "Healthcare Data",
+    "Data Quality", "Data Modeling"
+  ],
+  "tools_platforms": [
+    "Excel", "Tableau", "Power BI", "Looker", "Jira", "Confluence", "Figma",
+    "Postman", "Jupyter", "Google Colab", "Databricks", "Salesforce",
+    "ServiceNow", "Splunk", "Zendesk", "Notion", "Slack API", "Twilio",
+    "Stripe", "Razorpay", "Pinecone", "Weaviate", "pgvector"
+  ],
+  "web_mobile": [
+    "Web Development", "Backend Development", "Frontend Development",
+    "Full Stack Development", "Responsive Design", "Web Scraping",
+    "Microservices", "Serverless"
+  ],
+  "soft_skills": [
+    "Communication", "Written Communication", "Teamwork", "Leadership",
+    "Problem Solving", "Attention to Detail", "Time Management",
+    "Adaptability", "Mentoring", "Ownership", "Incident Management",
+    "Documentation", "Stakeholder Management", "On-call Support"
+  ]
+}

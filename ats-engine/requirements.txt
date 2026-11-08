@@ -1,0 +1,18 @@
+# Core evaluation stack (runtime-tested)
+pydantic>=2.6
+pdfplumber>=0.11
+pypdf>=5.0
+python-docx>=1.1
+rapidfuzz>=3.0
+numpy>=1.26
+sentence-transformers>=2.7
+pytest>=8.0
+
+# Optional features (engine degrades gracefully without them):
+#   - OCR for scanned PDFs (needs the external Tesseract binary):
+#     pytesseract>=0.3 ; plus Tesseract from https://github.com/UB-Mannheim/tesseract/wiki
+#   - Grammar checking (needs Java and downloads a ~200 MB LanguageTool jar):
+#     language-tool-python>=2.8   (only ever runs with ATS_ENGINE_GRAMMAR=1)
+#
+# spaCy is deliberately NOT required: tokenization/sectioning is rule-based
+# for determinism and to keep the CPU footprint small (see README).
