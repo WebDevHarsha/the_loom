@@ -1,0 +1,53 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 1333 >>
+stream
+BT
+/F1 11 Tf
+1 0 0 1 72 732 Tm (ANITA KRISHNAN) Tj
+1 0 0 1 72 714 Tm (anita.krishnan@example.com | +91 98765 43210 | linkedin.com/in/anitakrishnan) Tj
+1 0 0 1 72 688 Tm (SUMMARY) Tj
+1 0 0 1 72 672 Tm (Machine learning student who built scalable data pipelines and deployed models.) Tj
+1 0 0 1 72 652 Tm (SKILLS) Tj
+1 0 0 1 72 636 Tm (Python, PyTorch, SQL, PostgreSQL, Machine Learning, Git, Docker, FastAPI) Tj
+1 0 0 1 72 616 Tm (EDUCATION) Tj
+1 0 0 1 72 600 Tm (B.Tech in Computer Science, Northfield Institute of Technology, 2026) Tj
+1 0 0 1 72 578 Tm (PROJECTS) Tj
+1 0 0 1 72 562 Tm (Recommender System for Course Feedback \(Jan 2025 - May 2025\)) Tj
+1 0 0 1 72 546 Tm (- Developed a PyTorch recommender that improved retrieval accuracy by 18%.) Tj
+1 0 0 1 72 530 Tm (- Built data pipelines processing 250k rows with automated data quality checks.) Tj
+1 0 0 1 72 514 Tm (- Deployed with Docker and FastAPI serving 500 daily users.) Tj
+1 0 0 1 72 494 Tm (EXPERIENCE) Tj
+1 0 0 1 72 478 Tm (Machine Learning Intern, Prista Analytics \(Jun 2025 - Oct 2025\)) Tj
+1 0 0 1 72 462 Tm (- Analyzed customer datasets in PostgreSQL and reduced query latency by 30%.) Tj
+1 0 0 1 72 446 Tm (- Automated weekly reports in Python, saving 6 hours per week.) Tj
+1 0 0 1 72 426 Tm (CERTIFICATIONS) Tj
+1 0 0 1 72 410 Tm (AWS Cloud Practitioner) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001626 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1696
+%%EOF

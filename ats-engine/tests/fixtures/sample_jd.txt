@@ -1,0 +1,23 @@
+Machine Learning Engineering Intern
+
+About Innovex AI
+Innovex AI builds applied machine learning systems for retail analytics.
+
+About the Role
+You will build training pipelines and deploy small models with the team.
+
+Responsibilities
+- Build and maintain data pipelines that feed model training runs.
+- Deploy experimental models behind internal APIs and measure quality.
+- Analyze model errors and write lessons learned into runbooks.
+
+Minimum Qualifications
+- 1+ year of hands-on Python programming experience.
+- Working knowledge of PyTorch or scikit-learn.
+- Comfortable with SQL (joins, aggregations) and Git workflows.
+- Bachelor's degree in Computer Science or a related field.
+
+Nice to have
+- Familiarity with Docker, FastAPI or Kubernetes.
+- Exposure to AWS S3 or similar cloud storage.
+- Coursework or projects in Natural Language Processing.
