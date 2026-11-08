@@ -98,7 +98,7 @@ Task: edit the resume's LaTeX code so it is best tailored to the job \
 description. Use the project details to phrase bullet points, reorder, \
 emphasize or reword content where it strengthens the match. Work strictly \
 from the material given - never invent experience, skills or facts. Keep the \
-same overall structure. Aim for concise, roughly-one-page length, but \
+same overall structure. For each project, include only 2 subsections (bullet points). Aim for concise, roughly-one-page length, but \
 prioritize preserving job-relevant content - do not over-prune to chase \
 page count. Final fit to exactly one page is handled separately afterwards \
 by font/leading scaling, so do not delete important content for length.
