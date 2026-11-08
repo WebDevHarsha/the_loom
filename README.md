@@ -6,9 +6,9 @@ everything inside the project folder, no system installs, no admin rights:
 ```
 pipeline/        LLM tailoring: base resume + JD -> tailored one-page PDFs
 ats-engine/       Local ATS scorer: resume PDF vs JD -> explainable 0-100 report
-Resumes/          permanent tailored PDFs, one per company
-Cover_Letters/    permanent tailored cover letter PDFs, one per company
-Scores/           ATS evaluation reports (.md + .json), one per company
+Resumes/          permanent tailored PDFs, one per company+role
+Cover_Letters/    permanent tailored cover letter PDFs, one per company+role
+Scores/           ATS evaluation reports (.md + .json), one per company+role
 temp/             latest-run files only (PDFs + ATS report, replaced every run)
 venv/             shared Python venv for both parts
 TinyTeX/          portable LaTeX (reinstall anytime with pipeline/install_tinytex.bat)
@@ -48,13 +48,16 @@ personal `pipeline\*.txt` inputs (all gitignored; `*.example.txt` templates are 
 Takes your base resume, cover letter and projects plus a job description,
 asks Gemini (`gemini-3.6-flash` by default) to tailor the LaTeX to the job,
 compiles it with PyLaTeX + a LaTeX compiler (portable TinyTeX in this
-project, or `latexmk`/`pdflatex` from MiKTeX if already on `PATH`), and
-auto-shortens until each result is exactly one page (up to 2 retries; the
-best successfully compiled version always wins). A final layout step grows
-the base font size (10pt -> 11/12pt) and leading (`\linespread`) so the
-single page looks full instead of ending ~25% empty — layout only, no text
-changes. On a Gemini 429/quota error the pipeline exits with a one-line
-message instead of a stack trace.
+project, or `latexmk`/`pdflatex` from MiKTeX if already on `PATH`), then
+runs ATS scoring/improvement. Page fitting happens **only at the very end**
+(after all ATS work): a final layout step scales font size / leading to
+exactly one page — shrinking (smaller font + tighter `\linespread`, down to
+`\fontsize` 8pt overrides) when the PDF is over one page, growing
+(10pt -> 11/12pt + `\linespread` > 1) when the single page looks ~25%
+empty. Gemini is never asked to delete content just to chase page count
+mid-flow; content-shortening is kept only as a last-resort fallback when
+even the smallest font still overflows. On a Gemini 429/quota error the
+pipeline exits with a one-line message instead of a stack trace.
 
 Input files live in `pipeline/` (each has a `*.example.txt` template):
 
@@ -65,10 +68,17 @@ pipeline/projects.txt      your real projects, described in detail
 pipeline/jd.txt            job description to target
 ```
 
-`--company "Acme Corp"` sets the output filenames. Otherwise the company
-name is extracted from the JD with deterministic regex (for example a
-`Company:` line or an `About <Name>` heading; falls back to `Company`),
-then sanitized for use as a filename. Gemini is not used for this step.
+`--company "Acme Corp"` sets the company part of the output filenames.
+`--role "Software Engineer"` (aliases `--job-role`, `--job-title`) sets
+the role part. Final files are named `<company>_<role>.pdf`
+(e.g. `Machinify_Software_Engineer_Data_Platform.pdf`) so multiple roles
+at the same company never overwrite each other.
+
+Otherwise both names are extracted from the JD deterministically
+(company: `Company:` line or `About <Name>` heading; role: `Title:` line
+or the JD's heading like `Software Engineer — Data Platform`; fallbacks
+`Company` / plain `<company>.pdf`). Both are sanitized for use as a
+filename. Gemini is not used for this step.
 
 Run from the project root:
 
@@ -77,8 +87,8 @@ Run from the project root:
 ```
 
 Options: `--resume/--cover-letter/--projects/--jd` (input paths),
-`--company`, `--model`, `--compiler` (LaTeX compiler for PyLaTeX) and the
-scoring flags below (`--no-score`, `--yes-llm`, `--min-score`,
+`--company`, `--role`, `--model`, `--compiler` (LaTeX compiler for PyLaTeX)
+and the scoring flags below (`--no-score`, `--yes-llm`, `--min-score`,
 `--no-improve`).
 
 ## Part 2 — `ats-engine/` (ATS scoring)
@@ -118,8 +128,8 @@ are generated at test time).
 `pipeline.py` calls the ATS engine after generating the tailored resume:
 
 - Scoring runs **by default** against `temp/Resume.pdf` using the local
-  engine (shared root venv); the report goes to `Scores/<company>.md`
-  (+ `.json`).
+  engine (shared root venv); the report goes to `Scores/<company>_<role>.md`
+  (+ `.json`, same stem as the PDFs).
 - `--yes-llm` adds an optional Gemini-judged score blended with the local
   score (off by default; uses your existing API key).
 - Auto-improve: when the score is below `--min-score` (default **70**), the
@@ -135,7 +145,10 @@ without scoring.
 
 - Nothing system-wide: venvs, TinyTeX, pip caches, model caches, downloads
   and outputs all live in this project directory.
-- `Resumes/`, `Cover_Letters/`, `Scores/` are re-run safe: same company = overwrite.
+- `Resumes/`, `Cover_Letters/`, `Scores/` are re-run safe: same
+  `<company>_<role>` = overwrite; a different role at the same company is
+  a new file, never an overwrite. Existing plain `<company>.pdf` files
+  (pre-role runs) stay as-is; new runs use the `_<role>` suffix.
 - `temp/` holds only the latest run's files (`Resume.pdf`, `cover_letter.pdf`,
   `ATS_report.md`/`.json`, `ATS_jd_input.txt`); a failed compile leaves the
   stray `.tex` for debugging, removed next run.
