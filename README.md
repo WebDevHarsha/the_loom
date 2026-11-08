@@ -1,50 +1,62 @@
-# the_loom
+# Resume Tailoring + Local ATS Scoring
 
 Two cooperating parts in one project directory — everything portable,
-everything inside `F:\RB`, no system installs, no admin rights:
+everything inside the project folder, no system installs, no admin rights:
 
 ```
 pipeline/        LLM tailoring: base resume + JD -> tailored one-page PDFs
-ats-engine/      Local ATS scorer: resume PDF vs JD -> explainable 0-100 report
-Resumes/         permanent tailored PDFs, one per company
-Cover_Letters/   permanent tailored cover letter PDFs, one per company
-Scores/          ATS evaluation reports, one per company
-temp/            latest-run PDFs only (replaced every run)
-venv/            pipeline Python venv (PyLaTeX, pypdf, Gemini)
-TinyTeX/         portable LaTeX (reinstall anytime with pipeline/install_tinytex.bat)
+ats-engine/       Local ATS scorer: resume PDF vs JD -> explainable 0-100 report
+Resumes/          permanent tailored PDFs, one per company
+Cover_Letters/    permanent tailored cover letter PDFs, one per company
+Scores/           ATS evaluation reports (.md + .json), one per company
+temp/             latest-run files only (PDFs + ATS report, replaced every run)
+venv/             shared Python venv for both parts
+TinyTeX/          portable LaTeX (reinstall anytime with pipeline/install_tinytex.bat)
 ```
+
+Run all commands from the project root. The code locates its own inputs and
+outputs relative to the project folder (no absolute paths required).
+
+## Quick start
+
+```powershell
+# 1. Python 3.10+ venv + all dependencies (pipeline + ATS engine)
+python -m venv venv
+.\venv\Scripts\python.exe -m pip install -r pipeline\requirements.txt
+.\venv\Scripts\python.exe -m pip install -r ats-engine\requirements.txt
+
+# 2. LaTeX compiler (portable TinyTeX, ~74 MB, stays in .\TinyTeX)
+.\pipeline\install_tinytex.bat
+
+# 3. Gemini API key (current shell only; the pipeline does not load .env)
+$env:GEMINI_API_KEY = "your_key"   # GOOGLE_API_KEY also works
+
+# 4. Provide inputs (copy the templates, then replace the placeholders)
+#    pipeline\resume.txt, pipeline\cover_letter.txt, pipeline\projects.txt, pipeline\jd.txt
+
+# 5. Run end-to-end (tailor + compile + score)
+.\venv\Scripts\python.exe pipeline\pipeline.py
+```
+
+Internet is needed once for the TinyTeX download and for the ATS engine's
+`all-MiniLM-L6-v2` model (~90 MB, cached in `ats-engine\.models\`).
+After that, ATS scoring is fully offline. Never commit your API key or the
+personal `pipeline\*.txt` inputs (all gitignored; `*.example.txt` templates are kept).
 
 ## Part 1 — `pipeline/` (LLM tailoring)
 
 Takes your base resume, cover letter and projects plus a job description,
-asks Gemini (`gemini-3.6-flash`) to tailor the LaTeX to the job, compiles
-with PyLaTeX + portable TinyTeX, and auto-shortens until the result is
-exactly one page (up to 2 retries; the best successfully compiled version
-always wins).
+asks Gemini (`gemini-3.6-flash` by default) to tailor the LaTeX to the job,
+compiles it with PyLaTeX + a LaTeX compiler (portable TinyTeX in this
+project, or `latexmk`/`pdflatex` from MiKTeX if already on `PATH`), and
+auto-shortens until each result is exactly one page (up to 2 retries; the
+best successfully compiled version always wins). A final layout step grows
+the base font size (10pt -> 11/12pt) and leading (`\linespread`) so the
+single page looks full instead of ending ~25% empty — layout only, no text
+changes. On a Gemini 429/quota error the pipeline exits with a one-line
+message instead of a stack trace.
 
-Setup (unchanged from the original pipeline):
-
-1. Python 3.10+ venv:
-
-   ```powershell
-   python -m venv venv
-   .\venv\Scripts\Activate.ps1
-   pip install -r pipeline/requirements.txt
-   ```
-
-2. LaTeX compiler:
-
-   ```powershell
-   .\pipeline\install_tinytex.bat     # downloads + extracts TinyTeX into .\TinyTeX
-   ```
-
-3. Gemini API key (never committed; `.env` is gitignored):
-
-   ```powershell
-   $env:GEMINI_API_KEY = "your_key"   # GOOGLE_API_KEY also works
-   ```
-
-Input files live in `pipeline/` (matching `*.example.txt` templates):
+Input files live in `pipeline/` (each has a `*.example.txt` template):
 
 ```
 pipeline/resume.txt        base resume, full LaTeX source, exactly one page
@@ -53,15 +65,21 @@ pipeline/projects.txt      your real projects, described in detail
 pipeline/jd.txt            job description to target
 ```
 
+`--company "Acme Corp"` sets the output filenames. Otherwise the company
+name is extracted from the JD with deterministic regex (for example a
+`Company:` line or an `About <Name>` heading; falls back to `Company`),
+then sanitized for use as a filename. Gemini is not used for this step.
+
 Run from the project root:
 
 ```powershell
-F:\RB\venv\Scripts\python.exe pipeline\pipeline.py
+.\venv\Scripts\python.exe pipeline\pipeline.py
 ```
 
-Company name is extracted from the JD by Gemini (override with
-`--company "Acme Corp"`; also supports `--resume/--cover-letter/--projects/
---jd/--compiler/--model`).
+Options: `--resume/--cover-letter/--projects/--jd` (input paths),
+`--company`, `--model`, `--compiler` (LaTeX compiler for PyLaTeX) and the
+scoring flags below (`--no-score`, `--yes-llm`, `--min-score`,
+`--no-improve`).
 
 ## Part 2 — `ats-engine/` (ATS scoring)
 
@@ -69,30 +87,46 @@ Local, deterministic resume-vs-JD evaluation engine (hybrid: rule/keyword
 matching + MiniLM embeddings; **no LLM, no API calls**). Produces an
 explainable score with category breakdown, matched/partial/missing skills
 with evidence quotes, qualification checks, issues and recommendations.
+Details are in `ats-engine/README.md`.
+
+| Category | Weight | How |
+|---|---:|---|
+| Keyword Matching | 25% | exact / alias / conservative fuzzy matching of taxonomy skills, each with resume evidence quotes |
+| Semantic Relevance | 20% | per-requirement cosine similarity of JD items vs resume evidence units (`all-MiniLM-L6-v2`) |
+| Experience Relevance | 20% | relevance of experience *and projects*, tech coverage, quantified-achievement ratio |
+| Qualifications | 10% | degrees / minimum years / certifications -> satisfied / not satisfied / **unknown** (missing info != failure) |
+| Resume Structure | 15% | ATS parseability: sections, contact info, columns, tables, scanned pages, garbled text |
+| Content Quality | 10% | action verbs, weak phrasing, repetition, quantified achievements, bullet length |
+
+Standalone use (resume formats: `.pdf`, `.docx`, `.txt`):
 
 ```powershell
-.\venv\Scripts\Activate.ps1
-pip install -r ats-engine\requirements.txt        # first run fetches the ~90 MB model into ats-engine\.models
-F:\RB\venv\Scripts\python.exe ats-engine\main.py --resume ..\temp\Resume.pdf --jd pipeline\jd.txt --report Scores\<company>.md
+.\venv\Scripts\python.exe ats-engine\main.py --resume temp\Resume.pdf --jd pipeline\jd.txt --report Scores\Example.md --json Scores\Example.json
 ```
 
-See `ats-engine/README.md` for the scoring model, weights, optional
-features (OCR needs Tesseract; grammar checking needs Java), and tests
-(`pytest -q`; fixtures are generated at test time).
+Add `--no-semantic` to skip the embedding model (its weight is then
+redistributed). If the model or dependencies are missing, scoring degrades
+with a warning instead of crashing. Weights and thresholds are configurable
+in `ats-engine/config.py`; the 25/20/20/10/15/10 split is an initial
+calibration, not an industry standard. Optional features (OCR needs
+Tesseract; grammar checking needs Java) and the library API are documented
+in `ats-engine/README.md`. Tests: `pytest -q` from `ats-engine\` (fixtures
+are generated at test time).
 
-## Pipeline ↔ ATS integration
+## Pipeline + ATS integration
 
 `pipeline.py` calls the ATS engine after generating the tailored resume:
 
 - Scoring runs **by default** against `temp/Resume.pdf` using the local
-  engine (installed in the shared root venv); report goes to
-  `Scores/<company>.md` (+ `.json`).
+  engine (shared root venv); the report goes to `Scores/<company>.md`
+  (+ `.json`).
 - `--yes-llm` adds an optional Gemini-judged score blended with the local
   score (off by default; uses your existing API key).
 - Auto-improve: when the score is below `--min-score` (default **70**), the
   pipeline re-tailors with Gemini using the missing keywords and weak-bullet
   feedback (max 2 retry passes; best-scoring compiled version wins).
-- `--no-score` disables scoring entirely.
+  `--no-improve` scores only, without re-tailoring.
+- `--no-score` disables scoring (and auto-improve) entirely.
 
 If the engine's dependencies are missing, the pipeline warns and continues
 without scoring.
@@ -102,8 +136,6 @@ without scoring.
 - Nothing system-wide: venvs, TinyTeX, pip caches, model caches, downloads
   and outputs all live in this project directory.
 - `Resumes/`, `Cover_Letters/`, `Scores/` are re-run safe: same company = overwrite.
-- `temp/` contains only the two PDFs after a run; a failed compile leaves
-  the stray `.tex` for debugging; it is removed next run.
-- Weights and thresholds for the ATS engine are configurable in
-  `ats-engine/config.py`; the 25/20/20/10/15/10 split is an initial
-  calibration, not an industry standard.
+- `temp/` holds only the latest run's files (`Resume.pdf`, `cover_letter.pdf`,
+  `ATS_report.md`/`.json`, `ATS_jd_input.txt`); a failed compile leaves the
+  stray `.tex` for debugging, removed next run.
