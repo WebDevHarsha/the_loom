@@ -33,6 +33,8 @@ Requires:
 """
 
 import argparse
+import contextlib
+import io
 import json
 import os
 import re
@@ -303,13 +305,16 @@ def compile_pdf(latex: str, workdir: Path, jobname: str, compiler: str | None) -
     doc = RawLatexDocument(latex)
     ensure_compiler_on_path()
     try:
-        doc.generate_pdf(
-            target,
-            clean=True,
-            clean_tex=True,    # delete the generated .tex -> PDFs only in temp/
-            compiler=compiler, # None -> PyLaTeX tries latexmk, then pdflatex
-            silent=False,
-        )
+        # redirect_stdout: PyLaTeX prints the full transcript on failure;
+        # our RuntimeError below already extracts the useful first errors.
+        with contextlib.redirect_stdout(io.StringIO()):
+            doc.generate_pdf(
+                target,
+                clean=True,
+                clean_tex=True,    # delete the generated .tex -> PDFs only in temp/
+                compiler=compiler, # None -> PyLaTeX tries latexmk, then pdflatex
+                silent=True,       # hide pdflatex/latexmk chatter (class + package paths)
+            )
     except CompilerError:
         sys.exit(
             "ERROR: PyLaTeX found no LaTeX compiler. Install one:\n"
@@ -356,6 +361,170 @@ def count_pdf_pages(pdf: Path) -> int:
     except Exception as e:  # unreadable pdf - treat as unknown, do not retry
         print(f"  (could not count pages of {pdf.name}: {e})")
         return 1
+
+
+def pdf_content_span(pdf: Path) -> tuple[float, float, float] | None:
+    """(span_height_pt, top_margin_pt, page_height_pt) measured from text boxes.
+
+    Uses pypdf's text visitor to find the lowest (min y) and highest (max y)
+    text fragment on page 1. Returns None when the PDF has no extractable text.
+    """
+    try:
+        reader = PdfReader(str(pdf))
+        page = reader.pages[0]
+        page_height = float(page.mediabox.height)
+        lows: list[float] = []
+        highs: list[float] = []
+
+        def _collect(text: str, _cm, tm, _fm, _fs):
+            if text.strip():
+                lows.append(float(tm[5]))
+                highs.append(float(tm[5]))
+
+        page.extract_text(visitor_text=_collect)
+        if not lows:
+            return None
+        top, bottom = max(lows), min(lows)
+        return (top - bottom, page_height - top, page_height)
+    except Exception:
+        return None
+
+
+def pdf_fill_ratio(pdf: Path) -> float | None:
+    """Content height as a fraction of the printable height.
+
+    Printable height is approximated as page height minus two top-sized
+    margins. Ratio ~0.70-0.85 looks noticeably empty; ~0.92+ looks full.
+    """
+    measured = pdf_content_span(pdf)
+    if measured is None:
+        return None
+    span, top_margin, page_height = measured
+    printable = page_height - 2.0 * top_margin
+    if printable <= 0:
+        return None
+    return span / printable
+
+
+def _documentclass_fontsize(latex: str) -> int:
+    m = re.search(r"\\documentclass\s*\[(?:[^\]]*?,\s*)?(\d+)\s*pt", latex)
+    return int(m.group(1)) if m else 10
+
+
+def _set_documentclass_fontsize(latex: str, fontsize_pt: int) -> str:
+    """Replace the fontsize option in \\documentclass[...]."""
+    m = re.search(r"\\documentclass\s*\[(.*?)\](\s*\{[^}]*\})", latex, re.DOTALL)
+    if not m:
+        return latex
+    opts = m.group(1)
+    if re.search(r"\b(10|11|12)\s*pt\b", opts):
+        opts = re.sub(r"\b(10|11|12)\s*pt\b", f"{fontsize_pt}pt", opts, count=1)
+    else:
+        opts = (opts + f",{fontsize_pt}pt").lstrip(",")
+    return latex[: m.start()] + rf"\documentclass[{opts}]" + m.group(2) + latex[m.end():]
+
+
+def _inject_linespread(latex: str, spread: float) -> str:
+    """Insert \\linespread{spread} right after \\begin{document}.
+
+    Strip any previous \\linespread first so retries start from the *base*
+    latex and never stack multiplications.
+    """
+    latex = re.sub(r"\\linespread\s*\{[^}]*\}\s*\n?", "", latex, count=1)
+    if spread <= 1.0:
+        return latex
+    return re.sub(
+        r"(\\begin\s*\{document\})",
+        rf"\1\n\\linespread{{{spread:.2f}}}",
+        latex,
+        count=1,
+    )
+
+
+def _scaled_latex(base_latex: str, base_size: int, fontsize_pt: int, spread: float) -> str:
+    latex = _set_documentclass_fontsize(base_latex, fontsize_pt)
+    return _inject_linespread(latex, spread)
+
+
+def fill_pdf_to_one_page(pdf: Path, latex: str, jobname: str, compiler: str | None) -> tuple[Path, str]:
+    """Stretch a one-page PDF so it fills (nearly) the whole page.
+
+    Text layout is unchanged - only the base font size (via
+    \\documentclass) and leading (\\linespread) grow, in steps, until the
+    content fills the page or one more step would spill onto page 2. The
+    last candidate that stayed on one page wins. Never makes things worse:
+    on any failure the original pdf/latex are returned untouched.
+    """
+    if count_pdf_pages(pdf) != 1:
+        return pdf, latex
+
+    ratio = pdf_fill_ratio(pdf)
+    if ratio is not None and ratio >= 0.92:
+        return pdf, latex  # already full
+
+    base_size = _documentclass_fontsize(latex)
+    # Build (fontsize, linespread) candidates ordered by effective scale
+    # so the "first that looks full" and any spill are both handled by a
+    # single ascending pass.
+    sizes = [s for s in (11, 12) if s > base_size]
+    if not sizes:
+        sizes = [base_size]  # already 12pt: grow leading only
+    spreads = [1.00, 1.05, 1.10, 1.15, 1.20]
+    candidates: list[tuple[int, float, float]] = []  # (fontsize, spread, eff)
+    for size in sizes:
+        for spread in spreads:
+            eff = (size / base_size) * spread
+            if eff > 1.0 and eff <= 1.45:
+                candidates.append((size, spread, eff))
+    candidates.sort(key=lambda c: c[2])
+    # Dedupe effective scales (12pt+1.0 == 12pt at 10->12 base, etc. keep first)
+    deduped: list[tuple[int, float, float]] = []
+    for c in candidates:
+        if not deduped or abs(c[2] - deduped[-1][2]) > 0.005:
+            deduped.append(c)
+    candidates = deduped
+
+    # Start near (but slightly below) the scale the measured gap suggests,
+    # so we don't waste compiles on sizes that are obviously still empty.
+    if ratio:
+        needed = 0.95 / max(ratio, 0.5)
+        start = 0
+        for i, (_, _, eff) in enumerate(candidates):
+            if eff >= needed - 0.05:
+                start = max(0, i - 1)
+                break
+        else:
+            start = max(0, (len(candidates) - 4))
+        candidates = candidates[start:]
+
+    print(f"  Page looks {100 * ratio:.0f}% full; scaling font/leading to fill one page ...")
+    best_pdf, best_latex, best_ratio = pdf, latex, ratio if ratio is not None else 0.0
+    for idx, (size, spread, eff) in enumerate(candidates):
+        candidate_latex = _scaled_latex(latex, base_size, size, spread)
+        tag = f"{jobname}__fill{idx}"
+        try:
+            candidate_pdf = compile_pdf(candidate_latex, TEMP_DIR, tag, compiler)
+        except RuntimeError:
+            scratch_cleanup(TEMP_DIR, tag)
+            break  # bigger candidates will not help if this one won't build
+        if count_pdf_pages(candidate_pdf) != 1:
+            scratch_cleanup(TEMP_DIR, tag)
+            break  # overflowed: previous candidate (if any) is the last good one
+        new_ratio = pdf_fill_ratio(candidate_pdf)
+        if new_ratio is not None and new_ratio > best_ratio:
+            best_pdf, best_latex, best_ratio = candidate_pdf, candidate_latex, new_ratio
+        if new_ratio is not None and new_ratio >= 0.93:
+            break
+
+    if best_pdf is pdf:
+        return pdf, latex
+
+    final = TEMP_DIR / f"{jobname}.pdf"
+    shutil.copy2(best_pdf, final)
+    for f in TEMP_DIR.glob(f"{jobname}__fill*.*"):
+        f.unlink()
+    print(f"  Page now ~{100 * best_ratio:.0f}% full.")
+    return final, best_latex
 
 
 def generate_shortened_latex(latex: str, pages: int, jd: str, model: str, client) -> str:
@@ -658,10 +827,13 @@ def score_and_maybe_improve(pdf: Path, latex: str, jd: str, projects: str,
                     candidate_latex, TEMP_DIR, f"Resume__ats{attempt}s", args.compiler)
                 if count_pdf_pages(candidate_pdf) > 1:
                     print("  Improved version still over one page; discarding this attempt.")
+                    scratch_cleanup(TEMP_DIR, f"Resume__ats{attempt}")
+                    scratch_cleanup(TEMP_DIR, f"Resume__ats{attempt}s")
                     continue
         except (ValueError, RuntimeError, subprocess.CalledProcessError) as e:
             print(f"  WARNING: improvement attempt {attempt} failed ({type(e).__name__}); keeping previous version.")
             scratch_cleanup(TEMP_DIR, f"Resume__ats{attempt}")
+            scratch_cleanup(TEMP_DIR, f"Resume__ats{attempt}s")
             continue
         new_report = score_resume_ats(candidate_pdf, jd_input, model=args.model,
                                       use_llm=args.yes_llm, client=client)
@@ -671,13 +843,16 @@ def score_and_maybe_improve(pdf: Path, latex: str, jd: str, projects: str,
         else:
             print("  Improved version did not score higher; keeping previous version.")
             scratch_cleanup(TEMP_DIR, f"Resume__ats{attempt}")
+            scratch_cleanup(TEMP_DIR, f"Resume__ats{attempt}s")
 
-    for f in TEMP_DIR.glob("Resume__ats*"):
-        f.unlink()
     if best_report["final"] < threshold and client is None:
         print("  NOTE: auto-improve and the optional Gemini layer both need Gemini (GEMINI_API_KEY); score kept as-is.")
     if best_pdf != pdf:
-        shutil.copy2(best_pdf, TEMP_DIR / "Resume.pdf")
+        final = TEMP_DIR / "Resume.pdf"
+        shutil.copy2(best_pdf, final)  # copy BEFORE cleanup, else best is deleted
+        best_pdf = final
+    for f in TEMP_DIR.glob("Resume__ats*"):
+        f.unlink()
     return best_pdf, best_latex, best_report
 
 
@@ -724,6 +899,11 @@ def run_pipeline(args) -> dict:
             if ats_report:
                 score_file = file_score_report(ats_report, company_file)
                 print(f"  -> {score_file}")
+
+        # Stretch whatever survived above so the single page looks full
+        # instead of ending ~25% empty (layout-only: no text changes).
+        pdf, latex = fill_pdf_to_one_page(pdf, latex, name, args.compiler)
+        print(f"  -> {pdf}")
 
         if name == "Resume":
             final = copy_final_pdf(pdf, RESUMES_DIR, f"{company_file}.pdf")
